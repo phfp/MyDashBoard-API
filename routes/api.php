@@ -51,6 +51,11 @@ Route::post('login', function (Request $request) {
 
     if(Auth::attempt(['email'=>$data['email'],'password'=>$data['password']])){
         $user = auth()->user();
+        if($user->imagem){
+            $user->imagem = asset($user->imagem);
+        }else{
+            $user->imagem = asset("/perfis/img_user_padrao.png");
+        }
         $user->token = $user->createToken($user->email)->accessToken;
         return $user;
     }else{
@@ -92,6 +97,41 @@ Route::middleware('auth:api')->put('/perfil', function (Request $request){
     }
 
     if(isset($data['imagem'])){
+
+        Validator::extend('base64image', function($attribute, $value, $parameters, $validator){
+            $explode = explode(',', $value);
+            $allow = ['png', 'jpg', 'svg', 'jpeg'];
+            $format = str_replace(
+                [
+                    'data:image/',
+                    ';',
+                    'base64',
+                ],
+                [
+                    '', '', '',
+                ],
+                $explode[0]
+            );
+
+            if(!in_array($format, $allow)){
+                return false;
+            }
+
+            if(!preg_match('%^[a-zA-Z0-9/+]*={0,2}$%', $explode[1])){
+                return false;
+            }
+            return true;
+        });
+
+        $validacao = Validator::make($data, [
+            'imagem' => 'base64image',
+        ], ['base64image' => 'Imagem inválida!']);
+
+        if($validacao->fails()){
+            return $validacao->errors();
+        }
+
+
         $time = time();
         $diretorioPai = 'perfis';
         $diretorioImagem = $diretorioPai.DIRECTORY_SEPARATOR.'perfil_id'.$user->id;
@@ -104,9 +144,13 @@ Route::middleware('auth:api')->put('/perfil', function (Request $request){
         if(!file_exists($diretorioPai)){
             mkdir($diretorioPai,0700);
         }
-        
+
         if(!file_exists($diretorioImagem)){
             mkdir($diretorioImagem,0700);
+        }
+
+        if(file_exists($user->imagem)){
+            unlink($user->imagem);
         }
 
         file_put_contents($urlImagem,$file);
@@ -116,7 +160,12 @@ Route::middleware('auth:api')->put('/perfil', function (Request $request){
 
     $user->save();
 
-    $user->imagem = asset($user->imagem);
+    if($user->imagem){
+        $user->imagem = asset($user->imagem);
+    }else{
+        $user->imagem = asset("/perfis/img_user_padrao.png");
+    }
+    
     $user->token = $user->createToken($user->email)->accessToken;
 
     return $user;
